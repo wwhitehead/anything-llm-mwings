@@ -905,6 +905,20 @@ const SystemSettings = {
       LemonadeLLMModelPref: process.env.LEMONADE_LLM_MODEL_PREF,
       LemonadeLLMModelTokenLimit:
         process.env.LEMONADE_LLM_MODEL_TOKEN_LIMIT || 8192,
+
+      // NeterGaiiaM (AsAManThinks platform-pooled provider) Keys
+      // Surfacing these so the frontend's hasMissingCredentials() gate in
+      // LLMSelector/utils.js can see they are configured. Without these the
+      // workspace LLM picker shows "needs setup" and blocks activation even
+      // though NETERGAIIAM_* env vars are set.
+      NeterGaiiaMBaseUrl:
+        process.env.NETERGAIIAM_BASE_URL ||
+        "https://api.asamanthinks.com/api/v1",
+      NeterGaiiaMMode: process.env.NETERGAIIAM_MODE || "auto",
+      NeterGaiiaMModelPref:
+        process.env.NETERGAIIAM_MODEL || "netergaiiam-default",
+      NeterGaiiaMContext: process.env.NETERGAIIAM_CONTEXT || 200000,
+      NeterGaiiaMMaxTokens: process.env.NETERGAIIAM_MAX_TOKENS || 4096,
     };
   },
 
