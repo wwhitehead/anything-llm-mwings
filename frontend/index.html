@@ -37,25 +37,170 @@
 
   <body>
     <div id="root" class="h-screen"></div>
-    <!-- AAMT iOS-Safari diagnostic shim: surfaces fatal load errors instead
-         of leaving a blank white screen on iPad. Scripted before main.jsx so
-         any module-resolution / syntax-error in the bundle gets caught. -->
+    <!-- AAMT iOS-Safari polyfills: a few node_modules deps reference APIs
+         that are missing on iOS 14.x / 15.0-15.3 (Array.prototype.at,
+         structuredClone, Object.hasOwn). Polyfill them before any module
+         script runs so the bundle doesn't crash on older iPads. -->
     <script>
       (function () {
+        try {
+          if (!Array.prototype.at) {
+            // eslint-disable-next-line no-extend-native
+            Object.defineProperty(Array.prototype, "at", {
+              value: function (n) {
+                n = Math.trunc(n) || 0;
+                if (n < 0) n += this.length;
+                if (n < 0 || n >= this.length) return undefined;
+                return this[n];
+              },
+              writable: true, configurable: true
+            });
+          }
+          if (typeof String.prototype.at !== "function") {
+            // eslint-disable-next-line no-extend-native
+            Object.defineProperty(String.prototype, "at", {
+              value: function (n) {
+                n = Math.trunc(n) || 0;
+                if (n < 0) n += this.length;
+                if (n < 0 || n >= this.length) return undefined;
+                return this.charAt(n);
+              },
+              writable: true, configurable: true
+            });
+          }
+          if (typeof Object.hasOwn !== "function") {
+            Object.hasOwn = function (o, k) {
+              return Object.prototype.hasOwnProperty.call(Object(o), k);
+            };
+          }
+          if (typeof window.structuredClone !== "function") {
+            // Best-effort fallback: covers JSON-safe values, which is what
+            // the deps using it (xyflow/react-flow internal node-snapshot)
+            // actually pass. Not a full structured-clone implementation.
+            window.structuredClone = function (v) {
+              try { return JSON.parse(JSON.stringify(v)); }
+              catch (_) { return v; }
+            };
+          }
+        } catch (_) {}
+      })();
+    </script>
+    <!-- AAMT iOS-Safari viewport-height fix: iOS Safari's 100vh includes the
+         URL bar area which then gets subtracted on scroll, causing layout
+         jumps. Expose a stable --vh custom property = 1% of innerHeight so
+         CSS can use calc(var(--vh, 1vh) * 100) where layout matters. -->
+    <script>
+      (function () {
+        function setVH() {
+          try {
+            document.documentElement.style.setProperty(
+              "--vh",
+              window.innerHeight * 0.01 + "px"
+            );
+          } catch (_) {}
+        }
+        setVH();
+        window.addEventListener("resize", setVH);
+        window.addEventListener("orientationchange", setVH);
+      })();
+    </script>
+    <!-- AAMT iOS-Safari diagnostic shim: surfaces fatal load errors instead
+         of leaving a blank white screen on iPad. Scripted before main.jsx so
+         any module-resolution / syntax-error in the bundle gets caught.
+         Includes UA capture + copy-to-clipboard for support diagnostics. -->
+    <script>
+      (function () {
+        var firstError = null;
+        function escapeHtml(s) {
+          return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
         function showFatal(msg, src) {
           try {
             var root = document.getElementById("root");
             if (!root) return;
             // Only show if React hasn't mounted yet (root still empty)
-            // — otherwise we'd cover working UI.
+            // -- otherwise we'd cover working UI.
             if (root.children.length > 0) return;
+            if (!firstError) firstError = { msg: msg || "Unknown error", src: src || "" };
+            var ua = (navigator && navigator.userAgent) || "(ua unavailable)";
+            var when = new Date().toISOString();
+            var report =
+              "AnythingLLM load failure\n" +
+              "When: " + when + "\n" +
+              "URL:  " + (location && location.href) + "\n" +
+              "UA:   " + ua + "\n" +
+              "Err:  " + firstError.msg + "\n" +
+              (firstError.src ? "Src:  " + firstError.src + "\n" : "");
             root.innerHTML =
-              '<div style="font-family:-apple-system,system-ui,sans-serif;padding:24px;color:#fff;background:#1b1b1f;min-height:100vh;line-height:1.5">' +
-              '<h2 style="margin:0 0 12px">AnythingLLM failed to load.</h2>' +
-              '<p style="margin:0 0 12px;opacity:.8">' + (msg || "Unknown error") + "</p>" +
-              (src ? '<p style="margin:0 0 12px;opacity:.6;font-size:12px">at ' + src + "</p>" : "") +
-              '<p style="margin:0;opacity:.7;font-size:13px">Please refresh. If the problem persists, ' +
-              "open Safari → Develop → and copy the console error to support.</p></div>";
+              '<div style="font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;' +
+                'padding:32px 20px;color:#f5f5f7;background:#1b1b1f;min-height:100vh;' +
+                'line-height:1.55;-webkit-font-smoothing:antialiased;box-sizing:border-box">' +
+                '<div style="max-width:640px;margin:0 auto">' +
+                  '<h2 style="margin:0 0 8px;font-size:22px;font-weight:600">' +
+                    'AnythingLLM failed to load' +
+                  '</h2>' +
+                  '<p style="margin:0 0 20px;color:#a1a1a6;font-size:14px">' +
+                    'A diagnostic snapshot is shown below. Tap <em>Reload</em> to ' +
+                    'retry; if the problem persists, tap <em>Copy diagnostic</em> ' +
+                    'and send it to support so we can investigate.' +
+                  '</p>' +
+                  '<pre style="background:#2a2a2e;border:1px solid #3a3a3f;border-radius:10px;' +
+                    'padding:14px 16px;margin:0 0 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;' +
+                    'font-size:12px;color:#e5e5ea;white-space:pre-wrap;word-break:break-word;' +
+                    'max-height:50vh;overflow:auto" id="aamt-diag-pre">' +
+                    escapeHtml(report) +
+                  '</pre>' +
+                  '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+                    '<button id="aamt-diag-copy" type="button" style="-webkit-appearance:none;' +
+                      'appearance:none;border:0;border-radius:8px;padding:10px 16px;font-size:14px;' +
+                      'font-weight:500;background:#0a84ff;color:#fff;cursor:pointer">' +
+                      'Copy diagnostic' +
+                    '</button>' +
+                    '<button id="aamt-diag-reload" type="button" style="-webkit-appearance:none;' +
+                      'appearance:none;border:1px solid #48484a;border-radius:8px;padding:10px 16px;' +
+                      'font-size:14px;font-weight:500;background:transparent;color:#f5f5f7;cursor:pointer">' +
+                      'Reload' +
+                    '</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>';
+            var copyBtn = document.getElementById("aamt-diag-copy");
+            if (copyBtn) {
+              copyBtn.addEventListener("click", function () {
+                function done() {
+                  copyBtn.textContent = "Copied!";
+                  setTimeout(function () { copyBtn.textContent = "Copy diagnostic"; }, 1800);
+                }
+                function fallback() {
+                  try {
+                    var ta = document.createElement("textarea");
+                    ta.value = report;
+                    ta.style.position = "fixed";
+                    ta.style.opacity = "0";
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(ta);
+                    done();
+                  } catch (_) {
+                    copyBtn.textContent = "Copy failed -- long-press text above";
+                  }
+                }
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(report).then(done, fallback);
+                  } else { fallback(); }
+                } catch (_) { fallback(); }
+              });
+            }
+            var reloadBtn = document.getElementById("aamt-diag-reload");
+            if (reloadBtn) {
+              reloadBtn.addEventListener("click", function () { location.reload(); });
+            }
           } catch (_) {}
         }
         window.addEventListener("error", function (e) {
@@ -74,7 +219,7 @@
             showFatal(
               "The app did not mount within 8 seconds. " +
                 "This usually means a JavaScript module failed to load. " +
-                "On iPad, check Safari → Settings → Advanced → JavaScript is enabled."
+                "On iPad, check Safari -> Settings -> Advanced -> JavaScript is enabled."
             );
           }
         }, 8000);
