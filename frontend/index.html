@@ -37,6 +37,49 @@
 
   <body>
     <div id="root" class="h-screen"></div>
+    <!-- AAMT iOS-Safari diagnostic shim: surfaces fatal load errors instead
+         of leaving a blank white screen on iPad. Scripted before main.jsx so
+         any module-resolution / syntax-error in the bundle gets caught. -->
+    <script>
+      (function () {
+        function showFatal(msg, src) {
+          try {
+            var root = document.getElementById("root");
+            if (!root) return;
+            // Only show if React hasn't mounted yet (root still empty)
+            // — otherwise we'd cover working UI.
+            if (root.children.length > 0) return;
+            root.innerHTML =
+              '<div style="font-family:-apple-system,system-ui,sans-serif;padding:24px;color:#fff;background:#1b1b1f;min-height:100vh;line-height:1.5">' +
+              '<h2 style="margin:0 0 12px">AnythingLLM failed to load.</h2>' +
+              '<p style="margin:0 0 12px;opacity:.8">' + (msg || "Unknown error") + "</p>" +
+              (src ? '<p style="margin:0 0 12px;opacity:.6;font-size:12px">at ' + src + "</p>" : "") +
+              '<p style="margin:0;opacity:.7;font-size:13px">Please refresh. If the problem persists, ' +
+              "open Safari → Develop → and copy the console error to support.</p></div>";
+          } catch (_) {}
+        }
+        window.addEventListener("error", function (e) {
+          showFatal(e && e.message, e && (e.filename + ":" + e.lineno));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e && e.reason;
+          showFatal((r && r.message) || String(r));
+        });
+        // Safety net: if root is still empty after 8s (iOS Safari may be
+        // silently rejecting something) show a generic "still loading"
+        // message so the user has a signal.
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.children.length === 0) {
+            showFatal(
+              "The app did not mount within 8 seconds. " +
+                "This usually means a JavaScript module failed to load. " +
+                "On iPad, check Safari → Settings → Advanced → JavaScript is enabled."
+            );
+          }
+        }, 8000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 

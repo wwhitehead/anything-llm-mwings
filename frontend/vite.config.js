@@ -56,6 +56,13 @@ export default defineConfig({
     ]
   },
   build: {
+    // AAMT — explicit target so the bundle stays compatible with iOS
+    // Safari 14+. Vite's default ("modules") aims at evergreen Chrome and
+    // can emit syntax (e.g. some private-class-field forms, optional-chain
+    // edge cases) that iOS Safari 14 silently rejects → blank white screen
+    // on iPad. iOS 14.5 ships ES2020-class support, so es2020 is the
+    // safe baseline.
+    target: ["es2020", "safari14", "ios14"],
     rollupOptions: {
       output: {
         // These settings ensure the primary JS and CSS file references are always index.{js,css}

@@ -419,8 +419,52 @@ class MCPHypervisor {
    * @param {Object} server - The server definition
    * @returns {StreamableHTTPClientTransport | SSEClientTransport} - The server transport
    */
+  /**
+   * Rewrite `localhost`/`127.0.0.1` URLs when AnythingLLM is running inside a
+   * Docker container. Inside a container, `localhost` refers to the container
+   * itself — never to host services or sibling MCP containers. We map:
+   *   - MCP_HOST_OVERRIDES (JSON map of port → host) takes precedence
+   *   - port 3011 → "aamt-mcp"          (AAMT-MCP sibling container, prod compose)
+   *   - all other ports → "host.docker.internal" (PM2-on-host services)
+   * The override map env var lets ops tune this without code changes.
+   *
+   * @param {URL} url - The original URL
+   * @returns {URL} - A possibly-rewritten URL
+   */
+  #rewriteDockerHost(url) {
+    if (process.env.ANYTHING_LLM_RUNTIME !== "docker") return url;
+    if (url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return url;
+
+    let overrides = {};
+    try {
+      overrides = process.env.MCP_HOST_OVERRIDES
+        ? JSON.parse(process.env.MCP_HOST_OVERRIDES)
+        : {};
+    } catch (e) {
+      this.log(`MCP_HOST_OVERRIDES parse failed, ignoring: ${e.message}`);
+    }
+
+    const port = url.port || "";
+    const next = new URL(url.toString());
+    if (overrides[port]) {
+      next.hostname = overrides[port];
+    } else if (port === "3011") {
+      // AAMT-MCP sibling container in maiiam-aamt-prod compose.
+      next.hostname = "aamt-mcp";
+    } else {
+      // PM2-on-host services (wings-reasoner :3014, agentstudio :3013, etc.)
+      next.hostname = "host.docker.internal";
+    }
+    if (next.hostname !== url.hostname) {
+      this.log(
+        `Docker URL rewrite: ${url.hostname}:${port} → ${next.hostname}:${port}`
+      );
+    }
+    return next;
+  }
+
   createHttpTransport(server) {
-    const url = new URL(server.url);
+    const url = this.#rewriteDockerHost(new URL(server.url));
 
     // If the server block has a type property then use that to determine the transport type
     switch (server.type) {

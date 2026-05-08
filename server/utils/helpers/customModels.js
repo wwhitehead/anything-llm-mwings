@@ -49,6 +49,8 @@ const SUPPORT_CUSTOM_MODELS = [
   "privatemode",
   "sambanova",
   "lemonade",
+  "omlx",
+  "netergaiiam",
   // Embedding Engines
   "native-embedder",
   "cohere-embedder",
@@ -133,8 +135,58 @@ async function getCustomModels(provider = "", apiKey = null, basePath = null) {
       return await getLemonadeModels(basePath);
     case "lemonade-embedder":
       return await getLemonadeModels(basePath, "embedding");
+    case "omlx":
+      return await getOmlxModels(basePath, apiKey);
+    case "netergaiiam":
+      return await getNeterGaiiaMModels();
     default:
       return { models: [], error: "Invalid provider for custom models" };
+  }
+}
+
+// NeterGaiiaM — the platform routes all model ids through to its turbo
+// endpoint and accepts both raw Anthropic ids and "netergaiiam-*" aliases
+// (see apps/api/routers/inference/turbo.py). We expose a curated list of
+// the platform's currently-routed models so the workspace dropdown is
+// non-empty. If the platform later exposes a /inference/models listing,
+// swap this for a fetch — but a hardcoded list is the right fallback
+// because the actual gate is per-tier entitlement, not a static allowlist.
+async function getNeterGaiiaMModels() {
+  try {
+    const models = [
+      { id: "netergaiiam-default", name: "NeterGaiiaM (auto / platform default)" },
+      { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5 (turbo)" },
+      { id: "claude-haiku-4-5", name: "Claude Haiku 4.5 (turbo, fast)" },
+      { id: "claude-opus-4-7", name: "Claude Opus 4.7 (turbo, deep)" },
+    ];
+    return { models, error: null };
+  } catch (e) {
+    console.error(`NeterGaiiaM:getModels`, e.message);
+    return { models: [], error: "Could not fetch NeterGaiiaM models" };
+  }
+}
+
+// Wave 21/4 — oMLX exposes a standard OpenAI /v1/models endpoint, so the
+// listing is the same shape as LMStudio. Kept separate so the env-var
+// fallback chain (OMLX_BASE_PATH, OMLX_API_KEY) is wired correctly.
+async function getOmlxModels(basePath = null, apiKey = null) {
+  try {
+    const { OpenAI: OpenAIApi } = require("openai");
+    const openai = new OpenAIApi({
+      baseURL: basePath || process.env.OMLX_BASE_PATH,
+      apiKey: apiKey || process.env.OMLX_API_KEY || null,
+    });
+    const models = await openai.models
+      .list()
+      .then((results) => results.data)
+      .catch((e) => {
+        console.error(`oMLX:listModels`, e.message);
+        return [];
+      });
+    return { models, error: null };
+  } catch (e) {
+    console.error(`oMLX:getOmlxModels`, e.message);
+    return { models: [], error: "Could not fetch oMLX models" };
   }
 }
 
