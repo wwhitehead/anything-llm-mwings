@@ -1264,6 +1264,8 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
     if (typeof config.provider === "object") return config.provider;
 
     switch (config.provider) {
+      case "netergaiiam":
+        return new Providers.NeterGaiiaMProvider({ model: config.model });
       case "openai":
         return new Providers.OpenAIProvider({ model: config.model });
       case "anthropic":

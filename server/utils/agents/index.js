@@ -114,6 +114,12 @@ class AgentHandler {
 
   checkSetup() {
     switch (this.provider) {
+      case "netergaiiam":
+        // NeterGaiiaM proxies to the AsAManThinks platform — credentials
+        // (Anthropic key) live on the platform side and the workspace JWT
+        // is forwarded per-request, so there is no required env-var to gate
+        // on here. Setup is complete as long as the provider is selected.
+        break;
       case "openai":
         if (!process.env.OPEN_AI_KEY)
           throw new Error("OpenAI API key must be provided to use agents.");
@@ -292,6 +298,8 @@ class AgentHandler {
    */
   providerDefault(provider = this.provider) {
     switch (provider) {
+      case "netergaiiam":
+        return process.env.NETERGAIIAM_MODEL ?? "netergaiiam-default";
       case "openai":
         return process.env.OPEN_MODEL_PREF ?? "gpt-4o";
       case "anthropic":

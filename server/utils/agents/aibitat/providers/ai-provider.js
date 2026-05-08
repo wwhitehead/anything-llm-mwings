@@ -146,6 +146,26 @@ class Provider {
   static LangChainChatModel(provider = "openai", config = {}) {
     switch (provider) {
       // Cloud models
+      case "netergaiiam":
+        // NeterGaiiaM proxies through the AsAManThinks platform's
+        // /inference/turbo/chat endpoint, which is OpenAI-shaped at the
+        // *response* layer but not OpenAI-compatible at the request path
+        // (no /v1/chat/completions). LangChain's ChatOpenAI cannot speak
+        // that path, so for embedded summarization callers we expose a
+        // ChatOpenAI client pointed at the platform's optional OpenAI-
+        // compatible bridge (NETERGAIIAM_OPENAI_BASE), falling back to a
+        // configurable proxy if set. Most agent flows route through the
+        // dedicated NeterGaiiaMProvider above and never hit this branch.
+        return new ChatOpenAI({
+          configuration: {
+            baseURL:
+              process.env.NETERGAIIAM_OPENAI_BASE ||
+              process.env.NETERGAIIAM_BASE_URL ||
+              "https://api.asamanthinks.com/api/v1",
+          },
+          apiKey: process.env.NETERGAIIAM_FALLBACK_JWT ?? "netergaiiam",
+          ...config,
+        });
       case "openai":
         return new ChatOpenAI({
           apiKey: process.env.OPEN_AI_KEY,
